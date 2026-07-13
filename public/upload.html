@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>영수증 톡 - 영수증 올리기</title>
+<style>
+  :root { --brand: #3730a3; --bg: #f8f7ff; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    background: var(--bg); color: #1f2430; padding: 24px 16px 60px;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p.sub { color: #6b7280; margin: 0 0 24px; font-size: 14px; }
+  .card { background: white; border-radius: 16px; padding: 20px; box-shadow: 0 4px 16px rgba(55,48,163,0.08); }
+  label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; color: #374151; }
+  input[type=file] { width: 100%; padding: 12px; border: 2px dashed #c7d2fe; border-radius: 12px; background: #fafaff; margin-bottom: 16px; }
+  input[type=text] { width: 100%; padding: 12px; border: 1px solid #e5e7eb; border-radius: 10px; margin-bottom: 20px; font-size: 15px; }
+  button { width: 100%; padding: 14px; background: var(--brand); color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: 700; }
+  button:disabled { background: #a5a6c9; }
+  #preview { max-width: 100%; border-radius: 12px; margin-bottom: 16px; display: none; }
+  #result { margin-top: 20px; padding: 16px; border-radius: 12px; background: #eef2ff; white-space: pre-line; font-size: 14px; display: none; }
+  #result.error { background: #fee2e2; color: #991b1b; }
+</style>
+</head>
+<body>
+  <h1>🧾 영수증 올리기</h1>
+  <p class="sub">사진을 찍거나 앨범에서 선택하면 AI가 바로 분류해 드려요.</p>
+  <div class="card">
+    <label>영수증 사진</label>
+    <input type="file" id="receiptFile" accept="image/*" capture="environment" />
+    <img id="preview" />
+    <label>메모 (선택, 예: 오늘 미팅한 김대표님과 식사)</label>
+    <input type="text" id="note" placeholder="누구와, 어떤 목적으로 지출했는지 적어주면 분류가 더 정확해져요" />
+    <button id="submitBtn">AI 분류 요청하기</button>
+    <div id="result"></div>
+  </div>
+
+<script>
+  const params = new URLSearchParams(location.search);
+  const userId = params.get("u") || "web:anonymous";
+
+  const fileInput = document.getElementById("receiptFile");
+  const preview = document.getElementById("preview");
+  const submitBtn = document.getElementById("submitBtn");
+  const resultBox = document.getElementById("result");
+
+  fileInput.addEventListener("change", () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+    preview.src = URL.createObjectURL(file);
+    preview.style.display = "block";
+  });
+
+  submitBtn.addEventListener("click", async () => {
+    const file = fileInput.files[0];
+    if (!file) {
+      alert("영수증 사진을 먼저 선택해 주세요.");
+      return;
+    }
+    submitBtn.disabled = true;
+    submitBtn.textContent = "AI가 분석 중...";
+    resultBox.style.display = "none";
+    resultBox.className = "";
+
+    const formData = new FormData();
+    formData.append("receipt", file);
+    formData.append("userId", userId);
+    formData.append("note", document.getElementById("note").value);
+
+    try {
+      const res = await fetch("/api/upload", { method: "POST", body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "업로드 실패");
+      resultBox.textContent = data.replyText || JSON.stringify(data, null, 2);
+      resultBox.style.display = "block";
+    } catch (err) {
+      resultBox.textContent = "오류: " + err.message;
+      resultBox.className = "error";
+      resultBox.style.display = "block";
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "AI 분류 요청하기";
+    }
+  });
+</script>
+</body>
+</html>
