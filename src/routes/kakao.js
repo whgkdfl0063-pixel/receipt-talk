@@ -15,10 +15,7 @@ function simpleText(text) {
 function simpleTextWithLink(text, label, url) {
   return {
     version: "2.0",
-    template: {
-      outputs: [{ simpleText: { text } }],
-      quickReplies: [{ label, action: "webLink", webLinkUrl: url }],
-    },
+    template: { outputs: [{ simpleText: { text: `${text}\n\n${url}` } }] },
   };
 }
 
