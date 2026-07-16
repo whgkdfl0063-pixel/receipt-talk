@@ -44,6 +44,25 @@ CREATE TABLE IF NOT EXISTS monthly_usage (
   count INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (user_id, year_month)
 );
+
+-- 세금계산서/현금영수증 발행 리마인더용 테이블
+-- 카카오 스킬 서버는 사용자가 먼저 말을 걸어야만 응답 가능한 구조라(푸시 알림 불가,
+-- 별도의 알림톡/친구톡 API 및 심사가 필요) "매달 자동으로 톡이 온다"가 아니라,
+-- 사용자가 '이번 달 요약'을 물어볼 때 "아직 발행 안 한 거래처"를 같이 알려주는 방식으로 동작한다.
+CREATE TABLE IF NOT EXISTS invoice_clients (
+  user_id TEXT NOT NULL,
+  client_name TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (user_id, client_name)
+);
+
+CREATE TABLE IF NOT EXISTS invoice_log (
+  user_id TEXT NOT NULL,
+  client_name TEXT NOT NULL,
+  year_month TEXT NOT NULL,
+  issued_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (user_id, client_name, year_month)
+);
 `);
 
 function ensureUser(userId, channel) {
@@ -68,4 +87,53 @@ function incrementMonthlyCount(userId, yearMonth) {
   ).run(userId, yearMonth);
 }
 
-module.exports = { db, ensureUser, getMonthlyCount, incrementMonthlyCount };
+function addInvoiceClient(userId, clientName) {
+  db.prepare(
+    `INSERT OR IGNORE INTO invoice_clients (user_id, client_name) VALUES (?, ?)`
+  ).run(userId, clientName);
+}
+
+function listInvoiceClients(userId) {
+  return db
+    .prepare(`SELECT client_name FROM invoice_clients WHERE user_id = ? ORDER BY created_at`)
+    .all(userId);
+}
+
+function removeInvoiceClient(userId, clientName) {
+  db.prepare(`DELETE FROM invoice_clients WHERE user_id = ? AND client_name = ?`).run(
+    userId,
+    clientName
+  );
+}
+
+function markInvoiceIssued(userId, clientName, yearMonth) {
+  db.prepare(
+    `INSERT OR IGNORE INTO invoice_log (user_id, client_name, year_month) VALUES (?, ?, ?)`
+  ).run(userId, clientName, yearMonth);
+}
+
+function getUnissuedClients(userId, yearMonth) {
+  return db
+    .prepare(
+      `SELECT c.client_name FROM invoice_clients c
+       WHERE c.user_id = ?
+       AND NOT EXISTS (
+         SELECT 1 FROM invoice_log l
+         WHERE l.user_id = c.user_id AND l.client_name = c.client_name AND l.year_month = ?
+       )
+       ORDER BY c.created_at`
+    )
+    .all(userId, yearMonth);
+}
+
+module.exports = {
+  db,
+  ensureUser,
+  getMonthlyCount,
+  incrementMonthlyCount,
+  addInvoiceClient,
+  listInvoiceClients,
+  removeInvoiceClient,
+  markInvoiceIssued,
+  getUnissuedClients,
+};
